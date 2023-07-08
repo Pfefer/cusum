@@ -9,5 +9,6 @@ Start with creating a dedicated environment with conda, installing python 3.9 an
 ### Install
 
 In a terminal:  `conda activate my_env`
+
 Install the cusum package using pip : `pip install cusum`
 
