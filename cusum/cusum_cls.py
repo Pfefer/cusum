@@ -373,6 +373,7 @@ class CuSum_:
 
                         mf_shp: str
                             Filename of forest mask shapefile to be removed
+                            Set up None if you do not need to mask
 
                         area_th: int
                             Minimum mapping in meters for threshold high changes
