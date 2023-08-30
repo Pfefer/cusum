@@ -2,7 +2,7 @@ asf_search >= 6.4.0
 pyroSAR >= 0.20.0
 pyrasta >= 1.3.17
 cdtec >= 0.1
-geopandas~=0.9.0
+geopandas>0.13.0
 numpy~=1.22.3
 rtree ~= 0.9.7
 tqdm~=4.64.0

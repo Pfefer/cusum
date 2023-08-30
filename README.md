@@ -6,7 +6,7 @@ Package for processing Cumulative Sum change detection algorithm from downloadin
 
 Start with creating a dedicated environment with conda, installing python 3.9 and gdal. In a terminal or command prompt : 
 
-`conda create -n my_env python=3.9 gdal`
+`conda create -n my_env python=3.9 gdal=3.0.2`
 
 ### Install
 

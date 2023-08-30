@@ -50,18 +50,6 @@ class CuSum_:
             wkt_zone = gpd.GeoDataFrame.to_wkt(geo)
             self.wkt = str(list(wkt_zone.geometry)[0])
             self.zone_files = study_site
-        # try:
-        #     zone_shp = gpd.GeoSeries.from_wkt([study_site], crs="EPSG:4326")
-        #     zone_shp.to_file(os.path.join(self.out_zone, "zone.shp"))
-        #     self.zone_files = os.path.join(self.out_zone, "zone.shp")
-        #     self.wkt = study_site
-        #
-        #
-        # except ValueError:
-        #     geo = gpd.read_file(study_site).to_crs("EPSG:4326")
-        #     wkt_zone = gpd.GeoDataFrame.to_wkt(geo)
-        #     self.wkt = str(list(wkt_zone.geometry)[0])
-        #     self.zone_files = study_site
 
         try:
             os.mkdir(os.path.join(path, "Pre_processed_img"))
@@ -302,13 +290,6 @@ class CuSum_:
                        multi=multi_change_detection,
                        single_tcs=single_change_detection_tcs)
 
-        # DATA_TYPE = dict(single="int32",
-        #                  multi="int32")
-        # if polarization == 'VV':
-        #     in_path = in_vv
-        # else:
-        #     in_path = in_vh
-
         for in_path in [in_vh, in_vv]:
             images = []
             dates = []
@@ -361,9 +342,9 @@ class CuSum_:
 
                         Parameters
                         ----------
-                        th: int or str
+                        th: float
                             Threshold high
-                        tl: int or str
+                        tl: float
                             Threshold low
                         method: str
                             One of the following : 'single', single_tcs, 'multi'
@@ -376,21 +357,21 @@ class CuSum_:
                             Set up None if you do not need to mask
 
                         area_th: int
-                            Minimum mapping in meters for threshold high changes
+                            Minimum mapping in square meters for threshold high changes
                         area_tl: int
-                            Minimum mapping in meters for threshold low changes (final minimum mapping)
+                            Minimum mapping in quare meters for threshold low changes (final minimum mapping)
                         nb_max: int
                             Maximum number of changes accepted
 
                         """
+        th = int(th * 100)
+        tl = int(tl * 100)
 
         filename = [file for file in os.listdir(self.out_algo) if (str(th) in file) & ('VH' in file)
                     & (method in file)][0]
         period = re.search(r"\d{8}_\d{8}", filename)[0]
 
         make_paths(self.out_algo)
-
-        # shp_plots = self.zone_files  # your shapefiles forest mask and plots
 
         high_vh_list = [file for file in os.listdir(self.out_algo) if (str(th) in file) & ('VH' in file)
                         & (period in file) & (method in file)]
