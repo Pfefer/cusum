@@ -15,11 +15,11 @@ path = r"C:\Users\pfefer\guyane"
 if __name__ == '__main__':
     obj = CuSum_(path, start_date, last_date, study_site)
 
-    obj.sentinel1_download(start_date, last_date, USER, PASS, "DESCENDING", relativeOrbit=39)
+    obj.sentinel1_download(start_date, last_date, USER, PASS, "DESCENDING", relativeOrbit=39, platform="sentinel-1A")
     # relativeOrbit should be found by searching images manually on https://search.asf.alaska.edu/#/
 
     obj.preprocess()
 
     obj.run([1, 0.95], method='single', max_samples=500)
 
-    obj.post_processing(method='single', th=100, tl=75, mf_shp=forest_mask_shp, nb_max=20, area_th=100, area_tl=300)
+    obj.post_processing(method='single', th=1, tl=0.95, mf_shp=forest_mask_shp, nb_max=20, area_th=100, area_tl=300)
