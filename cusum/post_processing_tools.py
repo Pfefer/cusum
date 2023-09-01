@@ -109,7 +109,7 @@ def save_as_tif(raster_reference, input_array, output_filepath):
 def cross_nb(path, ras1, ras2, mnf_shp):
     threshold = re.search(r"_\d{2}_|_\d{3}_", ras1)[0]
     period = re.findall(r"\d{8}", ras1)[0] + '_' + re.findall(r"\d{8}", ras1)[1]
-    method = re.search(r"multi|single", ras1)[0]
+    method = re.search(r"multi|single_tcs|single|", ras1)[0]
 
     if not os.path.exists(os.path.join(path, "Post_raster", method + '_' + period + threshold + "rmv_nb_crossP.tif")):
 
@@ -348,7 +348,8 @@ def cross_tc(path, high_tc_file, low_tc_file, thresh, thresh_high, area_threshol
         output_cross_path, low_tc_file.replace(str(thresh), str(thresh_high) + '_' + str(thresh))),
         driver='ESRI Shapefile')
 
-    repair_shapefile(os.path.join(output_cross_path, low_tc_file.replace(str(thresh), str(thresh_high) + '_' + str(thresh))))
+    repair_shapefile(os.path.join(output_cross_path, low_tc_file.replace(str(thresh),
+                                                                         str(thresh_high) + '_' + str(thresh))))
 
 
 def erosion_dilation(path, cuts_algo, in_res, proj, date, buffer, th, tl, method):
@@ -360,4 +361,5 @@ def erosion_dilation(path, cuts_algo, in_res, proj, date, buffer, th, tl, method
     g.to_crs(proj)
 
     g.to_file(driver='ESRI Shapefile',
-              filename=os.path.abspath(os.path.join(path, "Final_results", '_'.join([method, date, str(th), str(tl), '.shp']))))
+              filename=os.path.abspath(os.path.join(path, "Final_results",
+                                                    '_'.join([method, date, str(th), str(tl), '.shp']))))

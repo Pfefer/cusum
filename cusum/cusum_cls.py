@@ -67,8 +67,8 @@ class CuSum_:
         finally:
             self.out_algo = os.path.join(path, "Output_CuSum" + "_" + date1 + "_" + date2)
 
-    def sentinel1_download(self, date_start, date_end, user, pw, flight_direction, relativeOrbit=None, mode="IW",
-                           level="GRD_HD", polarizations=None):
+    def sentinel1_download(self, date_start, date_end, user, pw, flight_direction, platform, relativeOrbit=None,
+                           mode="IW", level="GRD_HD", polarizations=None):
 
         """ Download S1 data
 
@@ -97,13 +97,15 @@ class CuSum_:
                                 polarizations : str
                                     A property of SAR electromagnetic waves that can be used to extract meaningful
                                     information about surface properties of the earth.
+                                platform : str
+                                    Sentinel-1A or Sentinel-1B
                                     
 
                                 """
 
         results = asf.search(start=date_start, end=date_end, processingLevel=level, flightDirection=flight_direction,
                              beamMode=mode, maxResults=200, intersectsWith=self.wkt, relativeOrbit=relativeOrbit,
-                             polarization=polarizations)
+                             polarization=polarizations, platform=platform)
         print(results)
         session = asf.ASFSession().auth_with_creds(user, pw)
         results.download(path=self.out_dl, session=session, processes=8)
@@ -130,7 +132,7 @@ class CuSum_:
 
                             (only applies to Sentinel-1) Also allow the less accurate RES orbit files to be used?
                             The function first tries to download a POE file for the scene.
-                            If this fails and RES files are allowed, it will download the RES file.
+                            If these fails and RES files are allowed, it will download the RES file.
                             The selected OSV type is written to the workflow XML file.
                             Processing is aborted if the correction fails (Apply-Orbit-File parameter continueOnFail set
                             to false).
@@ -230,7 +232,7 @@ class CuSum_:
                     List of thresholds
 
                 max_samples: int
-                    Maximum samples in bootstrap analysis, 500 is quietly enough
+                    Maximum samples in bootstrap analysis, 500 is enough
                 nb_cores: int
                     Numbers of CPU used to compute changes in images
                 method: str
@@ -314,10 +316,13 @@ class CuSum_:
                                        no_data=0,
                                        progress_bar=True)
 
-                result[0].to_file(os.path.join(self.out_algo, str(method) + "_" + str(dates[0]) + r"_" + str(dates[-1])
-                                               + '_' + pol + "_" + str(int(c_levels[0] * 100)) + '_.tif'))
-                result[1].to_file(os.path.join(self.out_algo, str(method) + "_" + str(dates[0]) + r"_" + str(dates[-1])
-                                               + '_' + pol + "_" + str(int(c_levels[1] * 100)) + '_.tif'))
+                result1 = result.extract_bands([1])
+                result2 = result.extract_bands([2])
+
+                result2.to_file(os.path.join(self.out_algo, str(method) + "_" + str(dates[0]) + r"_" + str(dates[-1])
+                                             + '_' + pol + "_" + str(int(c_levels[0] * 100)) + '_.tif'))
+                result1.to_file(os.path.join(self.out_algo, str(method) + "_" + str(dates[0]) + r"_" + str(dates[-1])
+                                             + '_' + pol + "_" + str(int(c_levels[1] * 100)) + '_.tif'))
             else:
                 for c_level in c_levels:
                     result = cdtec_run(FHANDLE[method], sources, dates, c_level, max_samples=max_samples,
@@ -327,7 +332,7 @@ class CuSum_:
                     result.to_file(os.path.join(self.out_algo, str(method) + "_" + str(dates[0]) + r"_" + str(dates[-1])
                                                 + '_' + pol + "_" + str(int(c_level * 100)) + '_.tif'))
 
-    def post_processing(self, th, tl, method, mf_shp, area_th=300, area_tl=1000, nb_max=10):
+    def post_processing(self, th, tl, method, mf_shp=None, area_th=300, area_tl=1000, nb_max=10):
 
         """ Post processing
 
