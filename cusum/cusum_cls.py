@@ -3,7 +3,8 @@ import shutil
 import pyroSAR.snap
 from pyrasta.raster import Raster
 from cdtec.base import single_change_detection, multi_change_detection, single_change_detection_tcs
-from cdtec.main import cdtec_run, cdtec_run_tcs
+from cdtec.main import cdtec_run
+from cusum.utils import cdtec_run_tcs
 from cusum.post_processing_tools import *
 
 

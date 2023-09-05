@@ -1,7 +1,71 @@
-import numpy as np
-
 from rtree import index
+import multiprocessing as mp
+from functools import partial
+
+from osgeo import gdal
+import numpy as np
+from pyrasta.raster import Raster
 from tqdm import tqdm
+
+PG_DESCRIPTION = dict(single_change_detection_tcs="single change")
+
+
+def cdtec_run_tcs(fhandle, sources, dates, c_level, max_samples=500,
+                  nb_processes=mp.cpu_count(), window_size=100,
+                  chunksize=1, data_type="float32", no_data=0,
+                  progress_bar=True):
+    """ Run detection change function
+
+    Parameters
+    ----------
+    fhandle: function
+        Change detection function to be applied
+    sources: list[pyrasta.raster.RasterBase]
+        list of rasters
+    dates: list of numpy.ndarray
+        list of dates corresponding to rasters
+    c_level: list of two thresholds (confidence level)
+        Confidence level (between 0 and 1)
+    max_samples: int
+        Max number of samples for bootstrapping
+    nb_processes: int
+        Number of processes for multiprocessing
+    window_size: int or tuple(int, int)
+        Size of window for raster calculation
+    chunksize: int
+        Chunk size for multiprocessing imap function
+    data_type: str
+        Data type for output raster
+    no_data: int
+        No data value
+    progress_bar: bool
+        if True, display progress bar
+
+    Returns
+    -------
+
+    """
+    dates = np.asarray(dates)
+    nb_samples = min(max_samples, np.math.factorial(len(sources)))
+
+    if progress_bar:
+        desc = f"Compute {PG_DESCRIPTION[fhandle.__name__]} " \
+               f"(CL=%s)" % ("%.2f" % c_level[0] + ' & ' + "%.2f" % c_level[1]).lstrip('0')
+    else:
+        desc = None
+
+    change = Raster.raster_calculation(sources, partial(fhandle, dates=dates,
+                                                            threshold_high=c_level[0],
+                                                            threshold_low=c_level[1],
+                                                            nb_samples=nb_samples,
+                                                            no_data=no_data),
+                                       output_type=gdal.GetDataTypeByName(data_type),
+                                       window_size=window_size,
+                                       nb_processes=nb_processes,
+                                       chunksize=chunksize,
+                                       description=desc)
+
+    return change
 
 
 def intersects_gpd(gdf1, gdf2):
