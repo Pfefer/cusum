@@ -544,9 +544,9 @@ class CuSum_:
 
                 run_parallel_cross_tc(out_chunks, chunks_high_list, chunks_low_list, tl, th, area_th, area_tl,
                                       cpu_cores)
-                chunks_list_cross_tc = [chunks for chunks in os.listdir(os.path.join(out_chunks, 'Post_shp', 'crossTc'))
+                chunks_list_cross_tc = [chunks for chunks in os.listdir(os.path.join(out_chunks, 'crossTc'))
                                         if chunks.endswith(".shp")]
-                merge_shapefiles(os.path.join(out_chunks, 'Post_shp', 'crossTc'),
+                merge_shapefiles(os.path.join(out_chunks, 'crossTc'),
                                  chunks_list_cross_tc, out_cross_tc)
 
             else:

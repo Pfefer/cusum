@@ -379,10 +379,10 @@ def cross_tc(path, high_tc_file, low_tc_file, thresh, thresh_high, area_threshol
     except TypeError:
         output_cross = method_cross(high_tc_pd, low_tc_pd, area_threshold_h, area_threshold_l)
 
-    if not os.path.exists(os.path.join(path, "Post_shp", "crossTc")):
-        os.makedirs(os.path.join(path, "Post_shp", "crossTc"))
+    if not os.path.exists(os.path.join(path, "crossTc")):
+        os.makedirs(os.path.join(path, "crossTc"))
 
-    output_cross_path = os.path.join(path, "Post_shp", "crossTc")
+    output_cross_path = os.path.join(path, "crossTc")
 
     output_cross.to_file(os.path.join(
         output_cross_path, low_tc_file.replace(str(thresh), str(thresh_high) + '_' + str(thresh))),
