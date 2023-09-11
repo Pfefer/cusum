@@ -276,7 +276,6 @@ class CuSum_:
                     file_groups[date_polarization].append(filename)
                 else:
                     file_groups[date_polarization] = [filename]
-            print(file_groups)
             for date_polarization, filenames in tqdm(file_groups.items(),
                                                      desc="Merging same date and polarization tif files"):
                 for i in range(len(filenames)):
@@ -539,11 +538,13 @@ class CuSum_:
 
                 chunks_high_list = [chunks_file for chunks_file in os.listdir(out_chunks) if ('.shp' in chunks_file)
                                     & (str(th) in chunks_file)]
+
                 chunks_low_list = [chunks_file for chunks_file in os.listdir(out_chunks) if ('.shp' in chunks_file)
                                    & (str(tl) in chunks_file)]
 
                 run_parallel_cross_tc(out_chunks, chunks_high_list, chunks_low_list, tl, th, area_th, area_tl,
                                       cpu_cores)
+
                 chunks_list_cross_tc = [chunks for chunks in os.listdir(os.path.join(out_chunks, 'crossTc'))
                                         if chunks.endswith(".shp")]
                 merge_shapefiles(os.path.join(out_chunks, 'crossTc'),

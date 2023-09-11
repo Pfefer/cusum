@@ -260,6 +260,7 @@ def method_cross(high_tc, low_tc, area_threshold_h, area_threshold_l, chunk_numb
     crs_tc = high_tc.to_crs('EPSG:3857')
     crs_low = low_tc.to_crs('EPSG:3857')
     filtered_high_crs = area_filter(crs_tc, area_threshold_h).to_crs('EPSG:4326')
+
     filtered_low_crs = area_filter(crs_low, area_threshold_l).to_crs('EPSG:4326')
 
     if chunk_number is not None:
@@ -268,13 +269,17 @@ def method_cross(high_tc, low_tc, area_threshold_h, area_threshold_l, chunk_numb
         temp_high, temp_low = 'temp_high.shp', 'temp_low.shp'
 
     for filtered_crs, temp_file in [(filtered_high_crs, temp_high), (filtered_low_crs, temp_low)]:
+
         if filtered_crs.empty:
-            empty_gdf = gpd.GeoDataFrame(geometry=[Polygon()], crs=filtered_crs.crs)
+
+            tiny_polygon = Polygon([(0, 0), (0.000001, 0), (0.000001, 0.000001), (0, 0.000001), (0, 0)])
+
+            empty_gdf = gpd.GeoDataFrame({'geometry': [tiny_polygon]}, crs="EPSG:4326")
+
             empty_gdf.to_file(driver='ESRI Shapefile', filename=os.path.abspath(os.path.join(os.getcwd(), temp_file)))
         else:
             filtered_crs.to_file(driver='ESRI Shapefile',
                                  filename=os.path.abspath(os.path.join(os.getcwd(), temp_file)))
-
     geo_high = gpd.GeoDataFrame.from_file(os.path.abspath(os.path.join(os.getcwd(), temp_high)))
     geo_low = gpd.GeoDataFrame.from_file(os.path.abspath(os.path.join(os.getcwd(), temp_low)))
     bool_output = intersects_gpd(geo_low, geo_high)
@@ -342,7 +347,7 @@ def gdal_mask(kml_path, input_filepath, output_filepath):
     gdal.Warp(output_filepath, input_filepath, options=gdal.WarpOptions(**options))
 
 
-def cross_tc(path, high_tc_file, low_tc_file, thresh, thresh_high, area_threshold_h, area_threshold_l):
+def cross_tc(path, high_tc_file, low_tc_file, thresh_low, thresh_high, area_threshold_h, area_threshold_l):
 
     tqdm.write("\n Cross Tc on : " + high_tc_file + '\t' + low_tc_file)
 
@@ -366,7 +371,6 @@ def cross_tc(path, high_tc_file, low_tc_file, thresh, thresh_high, area_threshol
     None.
 
     """
-
     high_tc_pd = gpd.read_file(os.path.join(path, high_tc_file))
     low_tc_pd = gpd.read_file(os.path.join(path, low_tc_file))
     try:
@@ -374,6 +378,7 @@ def cross_tc(path, high_tc_file, low_tc_file, thresh, thresh_high, area_threshol
         if match:
             chunk_number = match[0]
             output_cross = method_cross(high_tc_pd, low_tc_pd, area_threshold_h, area_threshold_l, chunk_number)
+
         else:
             output_cross = method_cross(high_tc_pd, low_tc_pd, area_threshold_h, area_threshold_l)
     except TypeError:
@@ -384,29 +389,35 @@ def cross_tc(path, high_tc_file, low_tc_file, thresh, thresh_high, area_threshol
 
     output_cross_path = os.path.join(path, "crossTc")
 
-    output_cross.to_file(os.path.join(
-        output_cross_path, low_tc_file.replace(str(thresh), str(thresh_high) + '_' + str(thresh))),
-        driver='ESRI Shapefile')
+    output_cross.reset_index(drop=True, inplace=True)
+    if not output_cross.empty:
+        output_cross.to_file(os.path.join(
+            output_cross_path, low_tc_file.replace(str(thresh_low), str(thresh_high) + '_' + str(thresh_low))),
+            driver='ESRI Shapefile')
 
-    repair_shapefile(os.path.join(output_cross_path, low_tc_file.replace(str(thresh),
-                                                                         str(thresh_high) + '_' + str(thresh))))
+        repair_shapefile(os.path.join(output_cross_path, low_tc_file.replace(str(thresh_low),
+                                                                             str(thresh_high) + '_' + str(thresh_low))))
+    if output_cross.empty:
+        print("Cross Tc between : " + high_tc_file + " and " + low_tc_file + " is empty so it has been skipped")
 
 
-def parallel_cross_tc(paths, high_tc_files, low_tc_files, thresh, thresh_high, area_threshold_h, num_cores,
-                      area_threshold_l):
+def parallel_cross_tc(paths, high_tc_files, low_tc_files, thresh_low, thresh_high, area_threshold_h, area_threshold_l,
+                      num_cores):
     pool = mp.Pool(processes=num_cores)
-
-    pool.starmap(cross_tc, [(paths, high_tc_file, low_tc_file, thresh, thresh_high, area_threshold_h, area_threshold_l)
+    pool.starmap(cross_tc, [(paths, high_tc_file, low_tc_file, thresh_low, thresh_high, area_threshold_h,
+                             area_threshold_l)
                             for path, high_tc_file, low_tc_file in zip(paths, high_tc_files, low_tc_files)])
 
     pool.close()
     pool.join()
 
 
-def run_parallel_cross_tc(path, high_tc_files, low_tc_files, thresh, thresh_high, area_threshold_h, area_threshold_l,
+def run_parallel_cross_tc(path, high_tc_files, low_tc_files, thresh_low, thresh_high, area_threshold_h,
+                          area_threshold_l,
                           num_cores):
-    parallel_cross_tc(path, high_tc_files, low_tc_files, thresh, thresh_high, area_threshold_h, num_cores,
-                      area_threshold_l)
+
+    parallel_cross_tc(path, high_tc_files, low_tc_files, thresh_low, thresh_high, area_threshold_h, area_threshold_l,
+                      num_cores)
 
 
 def erosion_dilation(path, cuts_algo, in_res, proj, date, buffer, th, tl, method):
@@ -482,6 +493,7 @@ def spatially_split_shapefile(input_shapefile, grid_shapefile, output_folder, th
             continue
 
         selection = gpd.GeoDataFrame({'geometry': [merged_geometry]}, crs=f"EPSG:{4326}")
+        selection = selection.explode()
 
         if not selection.empty:
             output_shapefile = os.path.join(output_folder, f"{input_filename}_chunk_{i}_{threshold}.shp")
