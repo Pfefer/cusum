@@ -56,11 +56,11 @@ class CuSum_:
             self.zone_files = study_site
 
         try:
-            os.mkdir(os.path.join(path, "Pre_processed_img"))
+            os.mkdir(os.path.join(path, "pre_processed_img"))
         except FileExistsError:
             pass
         finally:
-            self.out_pre = os.path.join(path, "Pre_processed_img")
+            self.out_pre = os.path.join(path, "pre_processed_img")
 
         if not os.path.exists(os.path.join(self.out_pre, "VV")):
             os.mkdir(os.path.join(self.out_pre, "VV"))

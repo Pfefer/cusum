@@ -680,6 +680,7 @@ def geocode(infile, outdir, t_srs=4326, spacing=20, polarizations='all', shapefi
     if tmpdir is None:
         tmpdir = outdir
     basename = os.path.join(tmpdir, id.outname_base(basename_extensions))
+
     outname = basename + '_' + suffix
 
     write = parse_node('Write')
@@ -836,7 +837,7 @@ def geocode(infile, outdir, t_srs=4326, spacing=20, polarizations='all', shapefi
             writer(xmlfile=wf_name, outdir=outdir, basename_extensions=basename_extensions,
                    clean_edges=clean_edges, clean_edges_npixels=clean_edges_npixels)
         except Exception as e:
-            log.info(str(e))
+
             with open(wf_name.replace('_proc.xml', '_error.log'), 'w') as logfile:
                 logfile.write(str(e))
         finally:
