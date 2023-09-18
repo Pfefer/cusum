@@ -280,7 +280,6 @@ class CuSum_:
             max_x_max = -float('inf')
             max_y_min = float('inf')
             max_y_max = -float('inf')
-
             for file_name in os.listdir(path):
                 if file_name.endswith(".tif"):
                     file_name_path = os.path.join(path, file_name)
@@ -298,16 +297,12 @@ class CuSum_:
 
                     ds = None  # Close dataset
 
-            p_crop_bar = tqdm(total=len(os.listdir(path)), desc="Cropping rasters")
-
-            for file_name in os.listdir(path):
+            for file_name in tqdm(os.listdir(path), desc="Cropping rasters", position=0):
                 if file_name.endswith(".tif"):
                     file_crop_path = os.path.join(path, file_name)
                     temp_output_path = os.path.join(path, "temp_cropped_" + file_name)  # Temporary output path
 
                     ds = gdal.Open(file_crop_path)
-
-                    p_crop_bar.set_description(f"Cropping: {file_name}")
 
                     gdal.Translate(temp_output_path, ds, projWin=[max_x_min, max_y_max, max_x_max, max_y_min])
 
@@ -315,9 +310,6 @@ class CuSum_:
 
                     os.remove(file_crop_path)
                     os.rename(temp_output_path, file_crop_path)
-
-                    p_crop_bar.update(1)
-
         if merge:
             file_groups = {}
             list_file_tif = [filename for filename in os.listdir(self.out_pre) if ('.tif' in filename) &
@@ -354,9 +346,6 @@ class CuSum_:
                 if ('VV' in filename) & ('.tif' in filename) & ('merged' in filename):
                     shutil.move(os.path.join(self.out_pre, filename), os.path.join(self.vv_path, filename))
 
-            crop_rasters_to_max_bounds(self.vh_path)
-            crop_rasters_to_max_bounds(self.vv_path)
-
             if interp:
                 vv_files = os.listdir(self.vv_path)
                 vh_files = os.listdir(self.vh_path)
@@ -364,7 +353,7 @@ class CuSum_:
                 if len(vv_files) != len(vh_files):
                     raise ValueError("The number of files in vv and vh directories does not match.")
 
-                progress_bar = tqdm(total=len(vv_files), desc="Filling no data lines in merged files")
+                p_interp_bar = tqdm(total=len(vv_files), desc="Filling no data lines in merged files")
 
                 for file_vv, file_vh in zip(vv_files, vh_files):
                     if "merged" in file_vv:
@@ -374,8 +363,11 @@ class CuSum_:
                             gdal.FillNodata(band, None, 3, 0)
                             img = None  # Close dataset
 
-                        progress_bar.set_description(f"Filling no data lines in : {file_vv}, {file_vh}")
-                        progress_bar.update(1)
+                        p_interp_bar.set_description(f"Filling no data lines in : {file_vv}, {file_vh}")
+                        p_interp_bar.update(1)
+
+            crop_rasters_to_max_bounds(self.vh_path)
+            crop_rasters_to_max_bounds(self.vv_path)
 
         else:
             for filename in os.listdir(self.out_pre):
