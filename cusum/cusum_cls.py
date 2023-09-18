@@ -154,7 +154,7 @@ class CuSum_:
                    removeS1BorderNoiseMethod='ESA', removeS1ThermalNoise=True,
                    demResamplingMethod='BILINEAR_INTERPOLATION',
                    imgResamplingMethod='BILINEAR_INTERPOLATION', DEM='SRTM 1Sec HGT', speckleFilter='Lee Sigma',
-                   merge=False, interp=False):
+                   merge=False, interp=False, remove_temp_files=False):
         """ preprocess
 
                         Description
@@ -254,57 +254,144 @@ class CuSum_:
                             merged result. And it could be necessary to fill those no data lines by interpolation.
                             Set up True to
                             process this step. Default is False.
+                        remove_temp_files : bool, optional
+                            Set to True to conserve disk space by removing all temporary pre-processed files after the
+                             preprocessing is complete.
+                            Default is False, which retains the temporary files.
 
                         """
+        zip_files = [filename for filename in os.listdir(self.out_dl) if filename.endswith(".zip")]
 
-        for filename in tqdm(os.listdir(self.out_dl), desc="Pre_processing"):
+        for filename in tqdm(zip_files, desc=f"Pre-processing zip files"):
             geocode(os.path.join(self.out_dl, filename), self.out_pre, t_srs, spacing=spacing,
                     polarizations=polarizations, shapefile=self.zone_files,
                     scaling=scaling, removeS1BorderNoise=True, allow_RES_OSV=allow_RES_OSV,
-                    removeS1BorderNoiseMethod=removeS1BorderNoiseMethod, removeS1ThermalNoise=removeS1ThermalNoise,
-                    speckleFilter=speckleFilter, terrainFlattening=True, export_extra=None, groupsize=8, cleanup=True,
+                    removeS1BorderNoiseMethod=removeS1BorderNoiseMethod,
+                    removeS1ThermalNoise=removeS1ThermalNoise,
+                    speckleFilter=speckleFilter, terrainFlattening=True, export_extra=None, groupsize=8,
+                    cleanup=True,
                     gpt_args=None, returnWF=False, demResamplingMethod=demResamplingMethod, demName=DEM,
                     imgResamplingMethod=imgResamplingMethod, alignToStandardGrid=False, refarea='gamma0',
                     clean_edges=False, clean_edges_npixels=1)
 
+        def crop_rasters_to_max_bounds(path):
+
+            max_x_min = float('inf')
+            max_x_max = -float('inf')
+            max_y_min = float('inf')
+            max_y_max = -float('inf')
+
+            for file_name in os.listdir(path):
+                if file_name.endswith(".tif"):
+                    file_name_path = os.path.join(path, file_name)
+                    ds = gdal.Open(file_name_path)
+
+                    x_min = ds.GetGeoTransform()[0]
+                    x_max = ds.GetGeoTransform()[0] + ds.GetGeoTransform()[1] * ds.RasterXSize
+                    y_min = ds.GetGeoTransform()[3] + ds.GetGeoTransform()[5] * ds.RasterYSize
+                    y_max = ds.GetGeoTransform()[3]
+
+                    max_x_min = min(max_x_min, x_min)
+                    max_x_max = max(max_x_max, x_max)
+                    max_y_min = min(max_y_min, y_min)
+                    max_y_max = max(max_y_max, y_max)
+
+                    ds = None  # Close dataset
+
+            p_crop_bar = tqdm(total=len(os.listdir(path)), desc="Cropping rasters")
+
+            for file_name in os.listdir(path):
+                if file_name.endswith(".tif"):
+                    file_crop_path = os.path.join(path, file_name)
+                    temp_output_path = os.path.join(path, "temp_cropped_" + file_name)  # Temporary output path
+
+                    ds = gdal.Open(file_crop_path)
+
+                    p_crop_bar.set_description(f"Cropping: {file_name}")
+
+                    gdal.Translate(temp_output_path, ds, projWin=[max_x_min, max_y_max, max_x_max, max_y_min])
+
+                    ds = None  # Close dataset
+
+                    os.remove(file_crop_path)
+                    os.rename(temp_output_path, file_crop_path)
+
+                    p_crop_bar.update(1)
+
         if merge:
             file_groups = {}
-            list_file_tif = [filename for filename in os.listdir(self.out_pre) if ('.tif' in filename)]
+            list_file_tif = [filename for filename in os.listdir(self.out_pre) if ('.tif' in filename) &
+                             ('merged' not in filename)]
             for filename in list_file_tif:
                 date_polarization = (re.search(r"\d{8}", filename)[0], re.search("VV|VH", filename)[0])
                 if date_polarization in file_groups:
                     file_groups[date_polarization].append(filename)
                 else:
                     file_groups[date_polarization] = [filename]
+
             for date_polarization, filenames in tqdm(file_groups.items(),
-                                                     desc="Merging same date and polarization tif files"):
+                                                     desc=f"Merging {date_polarization} tif files"):
                 for i in range(len(filenames)):
                     filename1 = filenames[i]
                     for j in range(i + 1, len(filenames)):
                         filename2 = filenames[j]
 
-                        ras1 = Raster(os.path.join(self.out_pre, filename1))
-                        ras2 = Raster(os.path.join(self.out_pre, filename2))
-                        ras_merged = Raster.merge([ras1, ras2], input_no_data=[0], output_no_data=0)
-                        ras_merged.to_file(os.path.join(self.out_pre, filename1[:-4] + "_merged.tif"))
-                        if interp:
-                            img = gdal.Open(os.path.join(self.out_pre, filename1[:-4] + "_merged.tif"),
-                                            gdal.GA_Update)
-                            band = img.GetRasterBand(1)
-                            gdal.FillNodata(band, None, 5, 0)
-                            img = None
+                        vh_merged_path = os.path.join(self.vh_path, filename1[:-4] + "_merged.tif")
+                        vv_merged_path = os.path.join(self.vv_path, filename1[:-4] + "_merged.tif")
+                        out_pre_merged_path = os.path.join(self.out_pre, filename1[:-4] + "_merged.tif")
+
+                        if not (os.path.exists(vh_merged_path) or os.path.exists(vv_merged_path) or os.path.exists(
+                                out_pre_merged_path)):
+                            ras1 = Raster(os.path.join(self.out_pre, filename1))
+                            ras2 = Raster(os.path.join(self.out_pre, filename2))
+                            ras_merged = Raster.merge([ras1, ras2], input_no_data=[0], output_no_data=0)
+                            ras_merged_path = os.path.join(self.out_pre, filename1[:-4] + "_merged.tif")
+                            ras_merged.to_file(ras_merged_path)
 
             for filename in os.listdir(self.out_pre):
                 if ('VH' in filename) & ('.tif' in filename) & ('merged' in filename):
                     shutil.move(os.path.join(self.out_pre, filename), os.path.join(self.vh_path, filename))
                 if ('VV' in filename) & ('.tif' in filename) & ('merged' in filename):
                     shutil.move(os.path.join(self.out_pre, filename), os.path.join(self.vv_path, filename))
+
+            crop_rasters_to_max_bounds(self.vh_path)
+            crop_rasters_to_max_bounds(self.vv_path)
+
+            if interp:
+                vv_files = os.listdir(self.vv_path)
+                vh_files = os.listdir(self.vh_path)
+
+                if len(vv_files) != len(vh_files):
+                    raise ValueError("The number of files in vv and vh directories does not match.")
+
+                progress_bar = tqdm(total=len(vv_files), desc="Filling no data lines in merged files")
+
+                for file_vv, file_vh in zip(vv_files, vh_files):
+                    if "merged" in file_vv:
+                        for img_path in [os.path.join(self.vv_path, file_vv), os.path.join(self.vh_path, file_vh)]:
+                            img = gdal.Open(img_path, gdal.GA_Update)
+                            band = img.GetRasterBand(1)
+                            gdal.FillNodata(band, None, 3, 0)
+                            img = None  # Close dataset
+
+                        progress_bar.set_description(f"Filling no data lines in : {file_vv}, {file_vh}")
+                        progress_bar.update(1)
+
         else:
             for filename in os.listdir(self.out_pre):
                 if ('VH' in filename) & ('.tif' in filename):
                     shutil.move(os.path.join(self.out_pre, filename), os.path.join(self.vh_path, filename))
                 if ('VV' in filename) & ('.tif' in filename):
                     shutil.move(os.path.join(self.out_pre, filename), os.path.join(self.vv_path, filename))
+            crop_rasters_to_max_bounds(self.vv_path)
+            crop_rasters_to_max_bounds(self.vh_path)
+
+        if remove_temp_files:
+            # Remove temporary files that are not in self.vv_path and self.vh_path
+            for filename in os.listdir(self.out_pre):
+                if filename not in os.listdir(self.vv_path) and filename not in os.listdir(self.vh_path):
+                    file_path = os.path.join(self.out_pre, filename)
+                    os.remove(file_path)
 
     def run(self, c_levels, max_samples=500, nb_cores=8, method='single'):
         """ Raster expression calculation
@@ -329,32 +416,6 @@ class CuSum_:
                     number of changes on each pixel. Single_tcs computes changes as single but for two different
                     thresholds in the same time
                 """
-
-        def clip():
-
-            x_min_list = []
-            x_max_list = []
-            y_min_list = []
-            y_max_list = []
-            for file_vv in os.listdir(self.vv_path):
-                raster_vv = Raster(os.path.join(self.vv_path, file_vv))
-                x_min, y_max, x_max, y_min = raster_vv.bounds
-                x_min_list.append(x_min)
-                x_max_list.append(x_max)
-                y_min_list.append(y_min)
-                y_max_list.append(y_max)
-
-            for file_vv, file_vh in zip(os.listdir(self.vv_path), os.listdir(self.vh_path)):
-                raster_vv = Raster(os.path.join(self.vv_path, file_vv))
-                raster_vh = Raster(os.path.join(self.vh_path, file_vh))
-                new_vv = raster_vv.clip(bounds=(np.max(x_min_list), np.min(y_max_list),
-                                                np.min(x_max_list), np.max(y_min_list)))
-                new_vh = raster_vh.clip(bounds=(np.max(x_min_list), np.min(y_max_list),
-                                                np.min(x_max_list), np.max(y_min_list)))
-                new_vv.to_file(os.path.join(self.vv_path, file_vv))
-                new_vh.to_file(os.path.join(self.vh_path, file_vh))
-
-        clip()
 
         FHANDLE = dict(single=single_change_detection,
                        multi=multi_change_detection,
@@ -400,7 +461,8 @@ class CuSum_:
                     result.to_file(os.path.join(self.out_algo, str(method) + "_" + str(dates[0]) + r"_" + str(dates[-1])
                                                 + '_' + pol + "_" + str(int(c_level * 100)) + '_.tif'))
 
-    def post_processing(self, th, tl, method, mf_shp=None, area_th=300, area_tl=1000, nb_max=10, cpu_cores=None):
+    def post_processing(self, th, tl, method, mf_shp=None, area_th=300, area_tl=1000, nb_max=10, cpu_cores=None,
+                        remove_temp_files=None):
 
         """ Post processing
 
@@ -438,6 +500,11 @@ class CuSum_:
                             Maximum number of changes accepted
                         cpu_cores : int
                             Number of cores to multiprocess post_processing cross tc step
+                        remove_temp_files : str, optional
+                            Choose which output directory to remove: "chunks", "Post_raster", "Post_shp", or "all".
+                            Default is None.
+
+
 
                         """
         th = int(th * 100)
@@ -449,14 +516,24 @@ class CuSum_:
 
         make_paths(self.out_algo)
 
-        high_vh_list = [file for file in os.listdir(self.out_algo) if (str(th) in file) & ('VH' in file)
-                        & (period in file) & (method in file)]
-        high_vv_list = [file for file in os.listdir(self.out_algo) if (str(th) in file) & ('VV' in file)
-                        & (period in file) & (method in file)]
-        low_vh_list = [file for file in os.listdir(self.out_algo) if (str(tl) in file) & ('VH' in file)
-                       & (period in file) & (method in file)]
-        low_vv_list = [file for file in os.listdir(self.out_algo) if (str(tl) in file) & ('VV' in file)
-                       & (period in file) & (method in file)]
+        def generate_file_list(folder, threshold, period, method, polarization):
+            file_list = [
+                file for file in os.listdir(folder) if
+                (threshold in file) and
+                (polarization in file) and
+                (period in file) and
+                (method in file)
+            ]
+
+            if method == "single":
+                file_list = [file for file in file_list if not ('tcs' in file)]
+
+            return file_list
+
+        high_vh_list = generate_file_list(self.out_algo, str(th), period, method, 'VH')
+        high_vv_list = generate_file_list(self.out_algo, str(th), period, method, 'VV')
+        low_vh_list = generate_file_list(self.out_algo, str(tl), period, method, 'VH')
+        low_vv_list = generate_file_list(self.out_algo, str(tl), period, method, 'VV')
 
         for vh, vv in zip(high_vh_list, high_vv_list):
 
@@ -484,9 +561,9 @@ class CuSum_:
         else:
 
             low_file = [ras for ras in os.listdir(os.path.join(self.out_algo, "Post_raster")) if (str(tl) in ras)
-                        & (period in ras) & (method in ras) & ("crossP" in ras)]
+                        & (period in ras) & (method in ras) & ("crossP" in ras) & ("rmv" not in ras)]
             high_file = [ras for ras in os.listdir(os.path.join(self.out_algo, "Post_raster")) if (str(th) in ras)
-                         & (period in ras) & (method in ras) & ("crossP" in ras)]
+                         & (period in ras) & (method in ras) & ("crossP" in ras) & ("rmv" not in ras)]
 
         for ras_low, ras_high in zip(low_file, high_file):
             polygonize_raster(self.out_algo, ras_low)
@@ -523,10 +600,16 @@ class CuSum_:
             if cpu_cores is not None:
                 try:
                     os.mkdir(os.path.join(self.out_algo, "chunks"))
+
                 except FileExistsError:
                     pass
                 finally:
                     out_chunks = os.path.join(self.out_algo, "chunks")
+
+                try:
+                    os.mkdir(os.path.join(self.out_algo, "chunks", "crossTc"))
+                except FileExistsError:
+                    pass
 
                 grid_shapefile = create_custom_grid(os.path.join(self.out_algo, "Post_shp", shp_low),
                                                     out_chunks, cpu_cores)
@@ -536,17 +619,39 @@ class CuSum_:
                 spatially_split_shapefile(os.path.join(self.out_algo, "Post_shp", shp_high), grid_shapefile, out_chunks,
                                           str(th))
 
-                chunks_high_list = [chunks_file for chunks_file in os.listdir(out_chunks) if ('.shp' in chunks_file)
-                                    & (str(th) in chunks_file)]
+                if mf_shp:
 
-                chunks_low_list = [chunks_file for chunks_file in os.listdir(out_chunks) if ('.shp' in chunks_file)
-                                   & (str(tl) in chunks_file)]
+                    chunks_high_list = [chunks_file for chunks_file in os.listdir(out_chunks) if ('.shp' in chunks_file)
+                                        & (str(th) in chunks_file) & (method in chunks_file)
+                                        & ("rmv" in chunks_file)]
+
+                    chunks_low_list = [chunks_file for chunks_file in os.listdir(out_chunks) if ('.shp' in chunks_file)
+                                       & (str(tl) in chunks_file) & (method in chunks_file)
+                                       & ("rmv" in chunks_file)]
+                else:
+                    chunks_high_list = [chunks_file for chunks_file in os.listdir(out_chunks) if ('.shp' in chunks_file)
+                                        & (str(th) in chunks_file) & (method in chunks_file)
+                                        & ("rmv" not in chunks_file)]
+
+                    chunks_low_list = [chunks_file for chunks_file in os.listdir(out_chunks) if ('.shp' in chunks_file)
+                                       & (str(tl) in chunks_file) & (method in chunks_file)
+                                       & ("rmv" not in chunks_file)]
+
+                def extract_chunk_number(filename):
+                    match = re.search(r'_chunk_(\d+)_', filename)
+                    if match:
+                        return int(match.group(1))
+                    return -1  # Return -1 if no match is found
+
+                chunks_low_list = sorted(chunks_low_list, key=extract_chunk_number)
+                chunks_high_list = sorted(chunks_high_list, key=extract_chunk_number)
 
                 run_parallel_cross_tc(out_chunks, chunks_high_list, chunks_low_list, tl, th, area_th, area_tl,
                                       cpu_cores)
 
                 chunks_list_cross_tc = [chunks for chunks in os.listdir(os.path.join(out_chunks, 'crossTc'))
-                                        if chunks.endswith(".shp")]
+                                        if chunks.endswith(".shp") & (method in chunks)]
+
                 merge_shapefiles(os.path.join(out_chunks, 'crossTc'),
                                  chunks_list_cross_tc, out_cross_tc)
 
@@ -558,3 +663,30 @@ class CuSum_:
                             (period in f) & ('.shp' in f) & (str(th) + '_' + str(tl) in f)]
             erosion_dilation(self.out_algo, results_algo[0], os.path.join(self.out_algo, "Post_shp", "crossTc"),
                              'EPSG:3857', period, 20, th, tl, method)
+
+            def remove_temp_cross_tc_files(directory_path, extensions):
+                try:
+                    for file_temp in os.listdir(directory_path):
+                        file_path = os.path.join(directory_path, file_temp)
+                        if any(file_temp.endswith(ext) for ext in extensions) & ('temp' in file_temp):
+                            os.remove(file_path)
+                except Exception as e:
+                    print(f"An error occurred: {str(e)}")
+
+            directory_to_clean = os.getcwd()
+            file_extensions_to_remove = ['.shp', '.cpg', '.dbf', '.prj', '.shx']
+            remove_temp_cross_tc_files(directory_to_clean, file_extensions_to_remove)
+
+            if remove_temp_files:
+                if remove_temp_files == "all":
+                    output_dirs = ["chunks", "Post_raster", "Post_shp"]
+                elif remove_temp_files in ["chunks", "Post_raster", "Post_shp"]:
+                    output_dirs = [remove_temp_files]
+                else:
+                    raise ValueError(
+                        "Invalid value for 'remove_output'. Choose from 'chunks', 'Post_raster', 'Post_shp', or 'all'.")
+
+                for output_dir in output_dirs:
+                    output_path = os.path.join(self.out_algo, output_dir)
+                    if os.path.exists(output_path):
+                        shutil.rmtree(output_path)

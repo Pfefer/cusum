@@ -19,80 +19,32 @@ warnings.filterwarnings("ignore", message="The frame.append method is deprecated
 
 
 def make_paths(path):
+    directories = ["Post_raster", "Post_shp", "Final_results"]
 
-    if not os.path.exists(os.path.join(path, "Post_raster")):
-        os.makedirs(os.path.join(path, "Post_raster"))
-
-    if not os.path.exists(os.path.join(path, "Post_shp")):
-        os.makedirs(os.path.join(path, "Post_shp"))
-
-    if not os.path.exists(os.path.join(path, "Final_results")):
-        os.makedirs(os.path.join(path, "Final_results"))
+    for directory in directories:
+        dir_path = os.path.join(path, directory)
+        try:
+            os.makedirs(dir_path)
+        except FileExistsError:
+            pass
 
 
 def save_as_tif(raster_reference, input_array, output_filepath):
-    """
-    Parameters
-    ----------
-    raster_reference : Gdal image
-        Gdal raster of reference, obtained using gdal.Open(file).
-    input_array : list or 3d array
-        List of arrays you want to save in the file (or 3d array).
-    output_filepath : string
-        Path of the file to save the arrays in.
-
-    Returns
-    -------
-    None.
-
-    """
     ds = raster_reference
-    geo_transform = ds.GetGeoTransform()
-    wkt = ds.GetProjection()
-    if isinstance(input_array, type(list(input_array))):
-        nb_arrays = len(input_array)
-        nb_row, nb_col = input_array[0].shape
-    else:
-        nb_dim = len(input_array.shape)
-        if nb_dim > 2:
-            nb_arrays = input_array.shape[2]
-            nb_row, nb_col = input_array[:, :, 0].shape
-        else:
-            nb_arrays = 1
-            nb_row, nb_col = input_array.shape
+    nb_arrays = 1 if len(input_array.shape) == 2 else input_array.shape[2]
+    nb_row, nb_col = input_array.shape[:2]
 
     driver = gdal.GetDriverByName("GTiff")
     dst_ds = driver.Create(output_filepath, nb_col, nb_row, nb_arrays, gdal.GDT_Float32)
-    if nb_arrays > 1:
-        if isinstance(input_array, type(list(input_array))):
-            for cur_band in range(len(input_array)):
-                cur_array = input_array[cur_band]
-                new_array = np.array(cur_array)
-                dst_ds.GetRasterBand(cur_band + 1).WriteArray(new_array)
-                dst_ds.GetRasterBand(cur_band + 1).SetNoDataValue(0)
-                dst_ds.SetGeoTransform(geo_transform)
-                srs = osr.SpatialReference()
-                srs.ImportFromWkt(wkt)
-                dst_ds.SetProjection(wkt)
 
-        elif isinstance(input_array, type(np.array(input_array))):
-            for logi in range(input_array.shape[2]):
-                cur_array = input_array[:, :, logi]
-                new_array = np.array(cur_array)
-                dst_ds.GetRasterBand(logi + 1).WriteArray(new_array)
-                dst_ds.GetRasterBand(logi + 1).SetNoDataValue(0)
-                dst_ds.SetGeoTransform(geo_transform)
-                srs = osr.SpatialReference()
-                srs.ImportFromWkt(wkt)
-                dst_ds.SetProjection(wkt)
-    else:
-        new_array = np.array(input_array)
-        dst_ds.GetRasterBand(1).WriteArray(new_array)
-        dst_ds.GetRasterBand(1).SetNoDataValue(0)
-        dst_ds.SetGeoTransform(geo_transform)
-        srs = osr.SpatialReference()
-        srs.ImportFromWkt(wkt)
-        dst_ds.SetProjection(wkt)
+    for band in range(nb_arrays):
+        cur_array = input_array[:, :, band] if nb_arrays > 1 else input_array
+        dst_ds.GetRasterBand(band + 1).WriteArray(cur_array)
+        dst_ds.GetRasterBand(band + 1).SetNoDataValue(0)
+
+    dst_ds.SetGeoTransform(ds.GetGeoTransform())
+    dst_ds.SetProjection(ds.GetProjection())
+
     ds = None
     dst_ds = None
 
@@ -101,9 +53,13 @@ def cross_nb(path, ras1, ras2, mnf_shp):
     threshold = re.search(r"_\d{2}_|_\d{3}_", ras1)[0]
     period = re.findall(r"\d{8}", ras1)[0] + '_' + re.findall(r"\d{8}", ras1)[1]
     method = re.search(r"multi|single_tcs|single|", ras1)[0]
+    output_filename = method + '_' + period + threshold
 
-    if not os.path.exists(os.path.join(path, "Post_raster", method + '_' + period + threshold + "rmv_nb_crossP.tif")):
+    output_path = os.path.join(path, "Post_raster")
+    output_file_nb = os.path.join(output_path, output_filename + "nb_crossP.tif")
+    output_file_rmv_nb = os.path.join(output_path, output_filename + "rmv_nb_crossP.tif")
 
+    if not os.path.exists(output_file_rmv_nb):
         ds1, ds2 = gdal.Open(os.path.join(path, ras1)), gdal.Open(os.path.join(path, ras2))
         nb_bands = min(ds2.RasterCount, ds1.RasterCount)
         arr_sum = np.zeros((ds2.RasterYSize, ds2.RasterXSize))
@@ -113,23 +69,17 @@ def cross_nb(path, ras1, ras2, mnf_shp):
             arr1, arr2 = ds1_band.ReadAsArray(), ds2_band.ReadAsArray()
             arr_sum += np.where((arr1 != 0) & (arr2 != 0), 1, 0)
 
-        if not os.path.exists(os.path.join(path, "Post_raster")):
-            os.makedirs(os.path.join(path, "Post_raster"))
-        save_as_tif(ds1, arr_sum, os.path.join(path, "Post_raster", method + '_' + period + threshold
-                                               + "nb_crossP.tif"))
+        if not os.path.exists(output_path):
+            os.makedirs(output_path)
+        save_as_tif(ds1, arr_sum, os.path.join(output_path, output_file_nb))
 
         if mnf_shp is not None:
-            tqdm.write("\n Masking forest on : " + method + '_' + period + threshold + "nb_crossP.tif")
-            gdal_mask(os.path.join(path, mnf_shp),
-                      os.path.join(path, "Post_raster", method + '_' + period + threshold + "nb_crossP.tif"),
-                      os.path.join(path, "Post_raster", method + '_' + period + threshold + "rmv_nb_crossP.tif"))
+            tqdm.write("\n Masking forest on : " + output_file_nb)
+            gdal_mask(os.path.join(path, mnf_shp), output_file_nb, output_file_rmv_nb)
     else:
         tqdm.write("Process already done, skipping rasters : " + ras1 + '\t' + ras2)
 
-    if mnf_shp is not None:
-        return os.path.join(path, "Post_raster", method + '_' + period + threshold + "rmv_nb_crossP.tif")
-    else:
-        return os.path.join(path, "Post_raster", method + '_' + period + threshold + "nb_crossP.tif")
+    return output_file_rmv_nb if mnf_shp is not None else output_file_nb
 
 
 def nb_change(path, ras, period):
@@ -262,7 +212,6 @@ def method_cross(high_tc, low_tc, area_threshold_h, area_threshold_l, chunk_numb
     filtered_high_crs = area_filter(crs_tc, area_threshold_h).to_crs('EPSG:4326')
 
     filtered_low_crs = area_filter(crs_low, area_threshold_l).to_crs('EPSG:4326')
-
     if chunk_number is not None:
         temp_high, temp_low = 'temp_high' + chunk_number + '.shp', 'temp_low' + chunk_number + '.shp'
     else:
@@ -284,26 +233,6 @@ def method_cross(high_tc, low_tc, area_threshold_h, area_threshold_l, chunk_numb
     geo_low = gpd.GeoDataFrame.from_file(os.path.abspath(os.path.join(os.getcwd(), temp_low)))
     bool_output = intersects_gpd(geo_low, geo_high)
 
-    for extension in ['.shp', '.shx', '.dbf', '.prj', '.cpg']:
-        file_path = os.path.abspath(os.path.join(os.getcwd(), f'temp_high{chunk_number}{extension}'))
-        if os.path.exists(file_path):
-            os.remove(file_path)
-
-        if chunk_number is None:
-            file_path = os.path.abspath(os.path.join(os.getcwd(), f'temp_high{extension}'))
-            if os.path.exists(file_path):
-                os.remove(file_path)
-
-    for extension in ['.shp', '.shx', '.dbf', '.prj', '.cpg']:
-        file_path = os.path.abspath(os.path.join(os.getcwd(), f'temp_low{chunk_number}{extension}'))
-        if os.path.exists(file_path):
-            os.remove(file_path)
-
-        if chunk_number is None:
-            file_path = os.path.abspath(os.path.join(os.getcwd(), f'temp_low{extension}'))
-            if os.path.exists(file_path):
-                os.remove(file_path)
-
     return geo_low[bool_output]
 
 
@@ -314,7 +243,7 @@ def merge_shapefiles(path, chunks_list_shapefiles, output_path):
         df = gpd.read_file(os.path.join(path, shapefile_path))
         dfs.append(df)
     base_filename = os.path.splitext(chunks_list_shapefiles[0])[0]
-    chunk_name = re.search(r"_chunk_\d_", base_filename)[0]
+    chunk_name = re.search(r'_chunk_(\d+)_', base_filename)[0]
     base_filename = base_filename.replace(chunk_name, "_")
 
     merged_gdf = gpd.GeoDataFrame(pd.concat(dfs, ignore_index=True))
@@ -371,39 +300,43 @@ def cross_tc(path, high_tc_file, low_tc_file, thresh_low, thresh_high, area_thre
     None.
 
     """
-    high_tc_pd = gpd.read_file(os.path.join(path, high_tc_file))
-    low_tc_pd = gpd.read_file(os.path.join(path, low_tc_file))
-    try:
-        match = re.search(r"_\d_", high_tc_file)
-        if match:
-            chunk_number = match[0]
-            output_cross = method_cross(high_tc_pd, low_tc_pd, area_threshold_h, area_threshold_l, chunk_number)
 
+    match_high = re.search(r"_\d_", high_tc_file)
+    match_low = re.search(r"_\d_", low_tc_file)
+    chunk_number = match_high[0] if match_high else match_low[0] if match_low else None
+
+    try:
+        high_tc_pd = gpd.read_file(os.path.join(path, high_tc_file))
+        low_tc_pd = gpd.read_file(os.path.join(path, low_tc_file))
+        if chunk_number:
+            output_cross = method_cross(high_tc_pd, low_tc_pd, area_threshold_h, area_threshold_l, chunk_number)
         else:
             output_cross = method_cross(high_tc_pd, low_tc_pd, area_threshold_h, area_threshold_l)
-    except TypeError:
-        output_cross = method_cross(high_tc_pd, low_tc_pd, area_threshold_h, area_threshold_l)
 
-    if not os.path.exists(os.path.join(path, "crossTc")):
-        os.makedirs(os.path.join(path, "crossTc"))
+        if not os.path.exists(os.path.join(path, "crossTc")):
+            os.makedirs(os.path.join(path, "crossTc"))
 
-    output_cross_path = os.path.join(path, "crossTc")
+        output_cross_path = os.path.join(path, "crossTc")
 
-    output_cross.reset_index(drop=True, inplace=True)
-    if not output_cross.empty:
-        output_cross.to_file(os.path.join(
-            output_cross_path, low_tc_file.replace(str(thresh_low), str(thresh_high) + '_' + str(thresh_low))),
-            driver='ESRI Shapefile')
+        output_cross.reset_index(drop=True, inplace=True)
+        if not output_cross.empty:
+            output_cross.to_file(os.path.join(
+                output_cross_path, low_tc_file.replace(str(thresh_low), str(thresh_high) + '_' + str(thresh_low))),
+                driver='ESRI Shapefile')
 
-        repair_shapefile(os.path.join(output_cross_path, low_tc_file.replace(str(thresh_low),
-                                                                             str(thresh_high) + '_' + str(thresh_low))))
-    if output_cross.empty:
-        print("Cross Tc between : " + high_tc_file + " and " + low_tc_file + " is empty so it has been skipped")
+            repair_shapefile(os.path.join(output_cross_path, low_tc_file.replace(str(thresh_low),
+                                                                                 str(thresh_high) + '_' + str(
+                                                                                     thresh_low))))
+        if output_cross.empty:
+            print("Cross Tc between : " + high_tc_file + " and " + low_tc_file + " is empty so it has been skipped")
+
+    except ValueError:
+        pass
 
 
 def parallel_cross_tc(paths, high_tc_files, low_tc_files, thresh_low, thresh_high, area_threshold_h, area_threshold_l,
-                      num_cores):
-    pool = mp.Pool(processes=num_cores)
+                      cpu_cores):
+    pool = mp.Pool(processes=cpu_cores)
     pool.starmap(cross_tc, [(paths, high_tc_file, low_tc_file, thresh_low, thresh_high, area_threshold_h,
                              area_threshold_l)
                             for path, high_tc_file, low_tc_file in zip(paths, high_tc_files, low_tc_files)])
@@ -414,10 +347,10 @@ def parallel_cross_tc(paths, high_tc_files, low_tc_files, thresh_low, thresh_hig
 
 def run_parallel_cross_tc(path, high_tc_files, low_tc_files, thresh_low, thresh_high, area_threshold_h,
                           area_threshold_l,
-                          num_cores):
+                          cpu_cores):
 
     parallel_cross_tc(path, high_tc_files, low_tc_files, thresh_low, thresh_high, area_threshold_h, area_threshold_l,
-                      num_cores)
+                      cpu_cores)
 
 
 def erosion_dilation(path, cuts_algo, in_res, proj, date, buffer, th, tl, method):
@@ -439,20 +372,20 @@ def create_custom_grid(input_shapefile, output_folder, total_cells):
     bounds = gdf.total_bounds
     width = bounds[2] - bounds[0]
     height = bounds[3] - bounds[1]
-    longer_dimension = max(width, height)
+    cell_size_x = width / math.floor(width * math.sqrt(total_cells / (width * height)))
+    cell_size_y = height / math.floor(height * math.sqrt(total_cells / (width * height)))
 
-    cell_size = math.sqrt((longer_dimension ** 2) / total_cells)
-    num_cols = math.ceil(width / cell_size)
-    num_rows = math.ceil(height / cell_size)
+    num_cols = math.floor(width / cell_size_x)
+    num_rows = math.floor(height / cell_size_y)
 
     grid_polygons = []
 
     for row in range(num_rows):
         for col in range(num_cols):
-            xmin = bounds[0] + col * cell_size
-            xmax = xmin + cell_size
-            ymin = bounds[1] + row * cell_size
-            ymax = ymin + cell_size
+            xmin = bounds[0] + col * cell_size_x
+            xmax = xmin + cell_size_x
+            ymin = bounds[1] + row * cell_size_y
+            ymax = ymin + cell_size_y
             polygon = Polygon([(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)])
 
             if any(polygon.intersects(geom) for geom in gdf.geometry):
@@ -468,7 +401,6 @@ def create_custom_grid(input_shapefile, output_folder, total_cells):
 
 
 def spatially_split_shapefile(input_shapefile, grid_shapefile, output_folder, threshold):
-
     gdf = gpd.read_file(input_shapefile)
     gdf.crs = "EPSG:4326"
 
@@ -478,23 +410,24 @@ def spatially_split_shapefile(input_shapefile, grid_shapefile, output_folder, th
     input_filename = os.path.splitext(os.path.basename(input_shapefile))[0]
 
     for i, grid_polygon in enumerate(grid_gdf.geometry):
-
         selected_geometries = []
 
         for j, polygon in gdf.iterrows():
             if polygon.geometry.centroid.intersects(grid_polygon):
                 selected_geometries.append(polygon.geometry)
 
-        if len(selected_geometries) > 1:
-            merged_geometry = cascaded_union(selected_geometries)
-        elif len(selected_geometries) == 1:
-            merged_geometry = selected_geometries[0]
+        if selected_geometries:
+            if len(selected_geometries) > 1:
+                merged_geometry = cascaded_union(selected_geometries)
+            else:
+                merged_geometry = selected_geometries[0]
+
+            selection = gpd.GeoDataFrame({'geometry': [merged_geometry]}, crs=f"EPSG:{4326}")
+            selection = selection.explode()
+
+            if not selection.empty:
+                output_shapefile = os.path.join(output_folder, f"{input_filename}_chunk_{i}_{threshold}.shp")
+                selection.to_file(output_shapefile, driver='ESRI Shapefile')
         else:
-            continue
-
-        selection = gpd.GeoDataFrame({'geometry': [merged_geometry]}, crs=f"EPSG:{4326}")
-        selection = selection.explode()
-
-        if not selection.empty:
-            output_shapefile = os.path.join(output_folder, f"{input_filename}_chunk_{i}_{threshold}.shp")
-            selection.to_file(output_shapefile, driver='ESRI Shapefile')
+            empty_shapefile = os.path.join(output_folder, f"{input_filename}_chunk_{i}_{threshold}_empty.shp")
+            open(empty_shapefile, 'w').close()
