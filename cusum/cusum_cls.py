@@ -640,7 +640,6 @@ class CuSum_:
 
                 chunks_low_list = sorted(chunks_low_list, key=extract_chunk_number)
                 chunks_high_list = sorted(chunks_high_list, key=extract_chunk_number)
-                print(chunks_high_list)
 
                 run_parallel_cross_tc(out_chunks, chunks_high_list, chunks_low_list, tl, th, area_th, area_tl,
                                       cpu_cores)
