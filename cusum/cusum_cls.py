@@ -383,7 +383,10 @@ class CuSum_:
             for filename in os.listdir(self.out_pre):
                 if filename not in os.listdir(self.vv_path) and filename not in os.listdir(self.vh_path):
                     file_path = os.path.join(self.out_pre, filename)
-                    os.remove(file_path)
+                    try:
+                        os.remove(file_path)
+                    except PermissionError:
+                        pass
 
     def run(self, c_levels, max_samples=500, nb_cores=8, method='single'):
         """ Raster expression calculation
@@ -614,19 +617,19 @@ class CuSum_:
                 if mf_shp:
 
                     chunks_high_list = [chunks_file for chunks_file in os.listdir(out_chunks) if ('.shp' in chunks_file)
-                                        & (str(th) in chunks_file) & (method in chunks_file)
+                                        & ('_' + str(th) + '_' in chunks_file) & (method in chunks_file)
                                         & ("rmv" in chunks_file)]
 
                     chunks_low_list = [chunks_file for chunks_file in os.listdir(out_chunks) if ('.shp' in chunks_file)
-                                       & (str(tl) in chunks_file) & (method in chunks_file)
+                                       & ('_' + str(tl) + '_' in chunks_file) & (method in chunks_file)
                                        & ("rmv" in chunks_file)]
                 else:
                     chunks_high_list = [chunks_file for chunks_file in os.listdir(out_chunks) if ('.shp' in chunks_file)
-                                        & (str(th) in chunks_file) & (method in chunks_file)
+                                        & ('_' + str(th) + '_' in chunks_file) & (method in chunks_file)
                                         & ("rmv" not in chunks_file)]
 
                     chunks_low_list = [chunks_file for chunks_file in os.listdir(out_chunks) if ('.shp' in chunks_file)
-                                       & (str(tl) in chunks_file) & (method in chunks_file)
+                                       & ('_' + str(tl) + '_' in chunks_file) & (method in chunks_file)
                                        & ("rmv" not in chunks_file)]
 
                 def extract_chunk_number(filename):
@@ -637,6 +640,7 @@ class CuSum_:
 
                 chunks_low_list = sorted(chunks_low_list, key=extract_chunk_number)
                 chunks_high_list = sorted(chunks_high_list, key=extract_chunk_number)
+                print(chunks_high_list)
 
                 run_parallel_cross_tc(out_chunks, chunks_high_list, chunks_low_list, tl, th, area_th, area_tl,
                                       cpu_cores)
